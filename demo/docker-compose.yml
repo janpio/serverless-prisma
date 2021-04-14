@@ -3,7 +3,7 @@ services:
 
   postgres:
     image: postgres:10
-    command: postgres -c 'max_connections=10' -c 'superuser_reserved_connections=0'
+    command: postgres -c 'max_connections=10' -c 'superuser_reserved_connections=0' -c 'max_wal_senders=0'
     restart: always
     environment:
       - POSTGRES_DB=test

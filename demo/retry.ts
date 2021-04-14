@@ -2,9 +2,9 @@
 
 import { Prisma } from "@prisma/client";
 
-const DEFAULT_MAX_RETRIES = 3;
-const DEFAULT_MIN_BACKOFF = 5;
-const DEFAILT_MAX_BACKOFF = 30;
+const DEFAULT_MAX_RETRIES = 5;
+const DEFAULT_MIN_BACKOFF = 50;
+const DEFAILT_MAX_BACKOFF = 300;
 
 type BackoffOptions = {
   min?: number;
@@ -47,11 +47,16 @@ export const Retry = (options?: RetryOptions): Prisma.Middleware => {
         const result = await next(params);
         return result;
       } catch (err) {
-        console.log('middleware error', err)
         if (
-          err instanceof Prisma.PrismaClientKnownRequestError &&
-          err.code === "P1017"
+          (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === "P1017"
+          ) || (
+            err instanceof Prisma.PrismaClientUnknownRequestError &&
+            err.message.includes('57P01') // terminating connection due to administrator command
+          )
         ) {
+          console.log('middleware error', err)
           retries += 1;
           if (backoff) {
             await sleep(minBackoff, maxBackoff)
