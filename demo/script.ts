@@ -1,5 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client'
-import { ServerlessPrisma, killConnections } from './serverless-prisma'
+import { ServerlessPrisma, manageConnections } from './serverless-prisma'
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -19,7 +19,7 @@ async function main() {
     prisma.$use(ServerlessPrisma())
 
     // run queries
-    await prisma.$queryRaw(`SET application_name to 'Prisma #${i}'`)
+    await prisma.$executeRaw(`SET application_name to 'Prisma #${i}'`)
     let all = await prisma.user.findMany() //prisma.$connect()
 
     // log success
@@ -27,7 +27,7 @@ async function main() {
     console.log(i + ': connection successful, ', all, 'open connections: ', open_connections[0].sum)
 
     // manage connections
-    await killConnections(prisma)
+    await manageConnections(prisma)
 
     // store client for later
     clients.push(prisma)
