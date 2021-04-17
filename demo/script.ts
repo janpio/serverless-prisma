@@ -1,7 +1,5 @@
 import { Prisma, PrismaClient } from '@prisma/client'
-
-import { Retry } from './retry';
-import { ServerlessPrisma } from './serverless-prisma'
+import { ServerlessPrisma, killConnections } from './serverless-prisma'
 
 function sleep(ms: number) {
   return new Promise(resolve => setTimeout(resolve, ms));
@@ -28,6 +26,9 @@ async function main() {
     let open_connections = await prisma.$queryRaw(`SELECT sum(numbackends) FROM pg_stat_database; --TODO WHERE datname = 'tests';`)
     console.log(i + ': connection successful, ', all, 'open connections: ', open_connections[0].sum)
 
+    // manage connections
+    await killConnections(prisma)
+
     // store client for later
     clients.push(prisma)
 
@@ -46,7 +47,7 @@ async function main() {
 
   
   // add retry to client #3
-  clients[3].$use(Retry())
+  // clients[3].$use(Retry())
 
   try {
     console.log('client 3, retry 1')

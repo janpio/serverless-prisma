@@ -1,4 +1,4 @@
-import { Prisma } from "@prisma/client";
+import { Prisma, PrismaClient } from "@prisma/client";
 import { Client as PgClient } from 'pg'
 
 function sleep(ms: number) {
@@ -28,27 +28,28 @@ async function getOpenConnections() {
     return pids
 }
 
-async function killConnections() {
+export async function killConnections(prisma: PrismaClient) {
 
   let pids = await getOpenConnections();
 
   // terminate if more than x open connections
-  if(pids.length >= 5) { // TODO 5
+  const connections_to_manage = 5 // TODO
+  if(pids.length >= connections_to_manage) { 
 
-    let to_kill = pids.slice(0,5) // TODO 5
+    let to_kill = pids.slice(0,connections_to_manage)
     console.log({ to_kill })
 
     const terminate = `
-  SELECT 
-      ${to_kill.map((pid) => `pg_terminate_backend(${pid})`).join(',')}
-  FROM 
-      pg_stat_activity 
-  WHERE 
-      -- don't kill my own connection!
-      pid <> pg_backend_pid()
-      -- only kill the connections to this databases
-      AND datname = 'tests' -- TODO
-  ;
+      SELECT 
+        ${to_kill.map((pid) => `pg_terminate_backend(${pid})`).join(',')}
+      FROM 
+        pg_stat_activity 
+      WHERE 
+        -- don't kill my own connection!
+        pid <> pg_backend_pid()
+        -- only kill the connections to this databases
+        AND datname = 'tests' -- TODO
+      ;
     `
     // console.log({ terminate })
     await sleep(1000) // wait 1 second for monitoring to pick up connection # before terminating
@@ -62,38 +63,60 @@ async function killConnections() {
   }
 }
 
+export class PrismaServerlessRetryError extends Error {
+    constructor(error: string) {
+      super(error)
+      this.name = 'PrismaServerlessRetryError';
+    }
+  }
 
 // control connection
 const pgClient = new PgClient('postgresql://root2:prisma@localhost:5432/postgres?schema=public')
 pgClient.connect()
 
+
+/*
+ * Middleware
+ */
 export const ServerlessPrisma = (): Prisma.Middleware => {
   return async (params, next) => {
     let maxRetries = 3
     let retries = 0;
+    let lastError = undefined
     do {
       try {
-        //console.log('outofconnections middleware retries', retries)
+        console.log('outofconnections middleware retries', retries)
         const result = await next(params);
         return result;
       } catch (err) {
+        lastError = err
         //console.log('outofconnections middleware error', err.message.substring(0, 200))
         if (
-          err instanceof Prisma.PrismaClientInitializationError &&
-          err.message.includes('Error querying the database: db error: FATAL: sorry, too many clients already')
+          (
+            err instanceof Prisma.PrismaClientInitializationError &&
+            err.message.includes('Error querying the database: db error: FATAL: sorry, too many clients already')
+          ) || (
+            err instanceof Prisma.PrismaClientKnownRequestError &&
+            err.code === "P1017" // Server has closed the connection.
+          ) || (
+            err instanceof Prisma.PrismaClientUnknownRequestError &&
+            err.message.includes('57P01') // terminating connection due to administrator command
+          )
         ) {
           //console.log('outofconnections middleware error', err)
 
           // TODO: Having this here in the middleware makes no sense at all!
-          await killConnections()
+        //   await killConnections()
           //process.exit()
 
           retries += 1;
+          sleep(500)
+          // TODO Add some variable backoff or strategy
           continue;
         }
         throw err;
       }
     } while (retries < maxRetries);
-    throw new Error()
+    throw new PrismaServerlessRetryError(lastError)
   }
 }
