@@ -24,6 +24,7 @@ async function getOpenConnections() {
     where usename='prisma' -- TODO
     ;`
   
+    // TODO Use current Prisma Client!
     const r = await pgClient.query(query)
     //console.log('r.rows', r.rows)
     const pids = r.rows.map((r) => r['process_id'])
@@ -55,6 +56,8 @@ async function killConnections() {
     `
     console.log({ terminate })
     await sleep(1000) // wait 1 second for monitoring to pick up connection # before terminating
+
+    // TODO Use current Prisma Client!
     const t = await pgClient.query(terminate)
     const res = t.rows
     console.log('killresults', { res })
@@ -80,7 +83,7 @@ const ServerlessPrisma = (): Prisma.Middleware => {
         ) {
           //console.log('outofconnections middleware error', err)
 
-          // cleanup
+          // TODO: Having this here in the middleware makes no sense at all!
           await killConnections()
           //process.exit()
 
