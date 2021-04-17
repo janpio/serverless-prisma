@@ -13,20 +13,26 @@ async function main() {
    */
   const max = 20
   for (let i = 1; i < max; i++) {
+    console.log('')
     console.log(i)
 
-    let prisma = new PrismaClient()
+    let prisma = new PrismaClient({ 
+      // log: ['query']
+    })
     prisma.$use(ServerlessPrisma())
 
     // run queries
     await prisma.$executeRaw(`SET application_name to 'Prisma #${i}'`)
+    let this_connection_pid = (await prisma.$queryRaw`SELECT pg_backend_pid()`)[0].pg_backend_pid
     let all = await prisma.user.findMany() //prisma.$connect()
 
     // log success
+    console.log(i + ': connection pid:', this_connection_pid)
     let open_connections = await prisma.$queryRaw(`SELECT sum(numbackends) FROM pg_stat_database; --TODO WHERE datname = 'tests';`)
-    console.log(i + ': connection successful, ', all, 'open connections: ', open_connections[0].sum)
+    console.log(i + ': connection successful,', all, '| open connections total: ', open_connections[0].sum)
 
     // manage connections
+    console.log(i + ': manage connections')
     await manageConnections(prisma)
 
     // store client for later
@@ -44,10 +50,7 @@ async function main() {
    */
 
   await sleep(500)
-
-  
-  // add retry to client #3
-  // clients[3].$use(Retry())
+  console.log('')
 
   try {
     console.log('client 3, retry 1')

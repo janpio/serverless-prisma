@@ -7,7 +7,7 @@ function sleep(ms: number) {
 async function getRunningProcesses(prisma: PrismaClient) {
     // get open connections
     const open_connections = `
-    select pid as process_id, 
+select pid as process_id, 
     usename as username, 
     datname as database_name, 
     client_addr as client_address, 
@@ -15,17 +15,17 @@ async function getRunningProcesses(prisma: PrismaClient) {
     backend_start,
     state,
     state_change
-    from pg_stat_activity
-    where usename='prisma' -- TODO
+from pg_stat_activity
+where usename = 'prisma' --TODO
+  and datname = 'tests'
+	and state = 'idle'
+order by state_change ASC
     ;`
   
-    // TODO Use current Prisma Client!
     const r = await prisma.$queryRaw(open_connections)
     //console.log(r)
-    //console.log('r.rows', r.rows)
     const pids = r.map((row: { process_id: any; }) => row.process_id)
-    //const pids = ["foo"]
-    console.log('running processes', { pids })
+    //console.log('running processes', { pids })
     return pids
 }
 
@@ -33,13 +33,14 @@ export async function manageConnections(prisma: PrismaClient) {
 
   let running_processes = await getRunningProcesses(prisma);
   // TODO debug
-  console.log({ before: running_processes });
+  console.log({ before: running_processes.length }, running_processes);
 
   // terminate if more than x open connections
-  const num_connections_to_manage = 5 // TODO
-  if(running_processes.length >= num_connections_to_manage) { 
+  const manage_threshhold = 7 // TODO
+  const num_connections_to_manage = 3 // TODO
+  if(running_processes.length >= manage_threshhold) { 
 
-    let connections_to_manage = running_processes.slice(0,num_connections_to_manage)
+    let connections_to_manage = running_processes.slice(0, num_connections_to_manage)
     console.log({ connections_to_manage })
 
     // wait 1 second for monitoring to pick up connection # before managing connections
@@ -59,10 +60,11 @@ export async function manageConnections(prisma: PrismaClient) {
     `
     // console.log({ manage_connections })
     let managed_connections = await prisma.$queryRaw(manage_connections)
-    console.log({ managed_connections })
+    // console.log({ managed_connections })
 
     // TODO debug
-    console.log({ after: await getRunningProcesses(prisma)});
+    const after_connections = await getRunningProcesses(prisma)
+    console.log({ after: after_connections.length}, after_connections);
   }
 }
 
@@ -86,7 +88,7 @@ export const ServerlessPrisma = (): Prisma.Middleware => {
     let lastError = undefined
     do {
       try {
-        console.log('outofconnections middleware retries', retries)
+        //console.log('outofconnections middleware retries', retries)
         const result = await next(params);
         return result;
       } catch (err) {
